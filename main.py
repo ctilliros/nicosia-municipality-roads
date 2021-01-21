@@ -33,26 +33,41 @@ def find_postal_code(coords):
 		if (Point(coords)).within(gdfpostal['geometry'][postal]):
 			return gdfpostal['post_code'][postal]
 
-
-for _, row in roads.iterrows():
-	for key, value in row.items():
-		if key == 'geometry':
-			for i in range(0,len(gdf)):
-				for y in value.coords:
-					if (Point(y)).within(gdf['geometry'][i]):  
-						postalcode = find_postal_code(y)
-						df_roads = df_roads.append({"geometry":value, "name":roads['name'][_], "oneway":row['oneway'],
-													"lanes":row['lanes'], "highway":row['highway'], "length": row['length'],
-													"postalcode":postalcode,"areaGR":gdf['QRTR_NM_G'][i],"areaEN":gdf['QRTR_NM_E'][i]},ignore_index=True)
-# 						break
-# host = "localhost"
-# user = "postgres"
-# port = '5432'
-# database = "testing"
-# password = "9664241907"
+coordinates = []
 
 engine = create_engine('postgresql+psycopg2://'+user+':'+password+'@'+host+':'+port+'/'+database)
 
-gdf1 = gpd.GeoDataFrame(df_roads, geometry='geometry')
-gdf1.drop('geometry', 1, inplace=True)
-gdf1.to_sql('roads', engine, if_exists='replace',  dtype={'geom': Geometry(geometry_type='LINESTRING', srid='32633',dimension='3')})
+for _, row in roads.iterrows():
+    for key, value in row.items():
+        if key == 'geometry':
+            for i in range(0,len(gdf)):
+                for y in value.coords:
+                    if (Point(y)).within(gdf['geometry'][i]):  
+                        postalcode = find_postal_code(y)
+                        coordinates.append(y)
+                if len(coordinates):
+                    if len(coordinates)==1:
+                        point = "POINT ("+str(coordinates[0][0])+str(coordinates[0][1])+")"
+                        df_roads = df_roads.append({"geom":point, "name":roads['name'][_], "oneway":row['oneway'],
+                                                "lanes":row['lanes'], "highway":row['highway'], "length": row['length'],
+                                                "postalcode":postalcode,"areaGR":gdf['QRTR_NM_G'][i],"areaEN":gdf['QRTR_NM_E'][i]},ignore_index=True)
+                        coordinates = []
+                    else:
+                        line_string = "LINESTRING ("
+                        points = []
+                        for values in coordinates:
+                            line_string = line_string + str(values[0]) + " " + str(values[1])
+                            line_string = line_string + ','
+                        line_string = line_string[:-1]
+                        line_string = line_string + ")"
+
+                        if type(row['lanes']) is list:
+                            lanes = max(row['lanes'])
+                        else:
+                            lanes = row['lanes']
+
+                        df_roads = df_roads.append({"geom":line_string, "name":roads['name'][_], "oneway":row['oneway'],
+                                                "lanes":row['lanes'], "highway":row['highway'], "length": row['length'],
+                                                "postalcode":postalcode,"areaGR":gdf['QRTR_NM_G'][i],"areaEN":gdf['QRTR_NM_E'][i]},ignore_index=True)
+                        coordinates = []                    
+df_roads.to_sql('roads', engine, if_exists = 'replace')
